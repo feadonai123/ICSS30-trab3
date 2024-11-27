@@ -22,12 +22,10 @@ class Lider:
   def add_broker(self, id, ref, estado):
     self.brokers.append((id, ref, estado, time.time()))
     print("Broker {0} enrolled".format(id))
-    print("Len brokers: {0}".format(len(self.brokers)))
     
   def add_log(self, log):
     self.log.append(log)
-    print("Log added")
-    print("Len log: {0}".format(len(self.log)))
+    print("Log added", self.log)
     
     brokers_success = 0
     can_commit = False
@@ -51,7 +49,6 @@ class Lider:
         print("Error adding log")
       else:
         print("Log added with success")
-        print("thinking about quorum")
         brokers_success += 1
       
       if brokers_success >= self.num_quorum:
@@ -70,9 +67,6 @@ class Lider:
       return False
     
   def search(self, offset):
-    print("Searching")
-    print("Offset: {0}".format(offset))
-    print("Len log: {0}".format(len(self.log)))
     print("Log: {0}".format(self.log[offset:]))
     
     if(offset == 0 and len(self.log) == 0):
@@ -99,7 +93,7 @@ class Lider:
   def start_check_brokers(self):
     def check_brokers_loop():
       while True:
-        print("len brokers", len(self.brokers))
+        # print(f"\nVerificar quorum. Qtd brokers {len(self.brokers)}")
         index = 0
         activeBrokers = 0
         for broker in self.brokers:
@@ -110,8 +104,9 @@ class Lider:
             activeBrokers = activeBrokers + 1
           index = index + 1
           
+        print(f"Brokers ativos: {activeBrokers}")
         if(activeBrokers < self.num_quorum):
-          print("Quorum abaixo do permitido")
+          print(f"Quorum abaixo do permitido")
           for broker in self.brokers:
             id, ref, estado, lastBeatAt = broker
             if(estado == "OBSERVADOR"):
@@ -156,40 +151,49 @@ class MiddlewareListen(object):
   @Pyro5.server.expose
   def enroll_broker(self, id, ref, estado):
     try:
-      print("Enrolling broker {0}".format(id))
-      print("Ref: {0}".format(ref))
+      print(f"\n[INICIO] Recebendo enroll_broker", id, ref, estado)
       lider.add_broker(id, ref, estado)
+      print("[FIM] Recebendo enroll_broker SUCESSO")
       return "OK"
     except Exception as e:
-      print("e", e)
+      print("[FIM] Recebendo enroll_broker ERRO")
       return False
   
   @Pyro5.server.expose
   def write(self, log):
-    print("Writing log")
+    print(f"\n[INICIO] Recebendo write", log)
     success = lider.add_log(log)
     if success is True:
+      print("[FIM] Recebendo write SUCESSO")
       return "OK"
     else:
+      print("[FIM] Recebendo write ERRO")
       return "NOK"
     
   @Pyro5.server.expose
   def read(self, offset):
+    print(f"\n[INICIO] Recebendo read", offset)
     success, data = lider.read_log(offset)
     if success is True:
+      print(f"\n[FIM] Recebendo read SUCESSO", data)
       return data
     else:
+      print(f"\n[FIM] Recebendo read ERRO")
       return "NOK"
   
   @Pyro5.server.expose
   def search(self, offset):
-    return lider.search(offset)
+    print(f"\n[INICIO] Recebendo search", offset)
+    res = lider.search(offset)
+    print(f"\n[FIM] Recebendo search SUCESSO", res)
+    return res
   
   @Pyro5.server.expose
   @Pyro5.api.oneway
   def heartbeat(self, id):
-    print("Heartbeat from", id)
+    # print(f"\n[INICIO] Recebendo heartbeat", id)
     lider.set_broker_alive(id)
+    # print(f"\n[FIM] Recebendo read heartbeat SUCESSO")
     return True
   
   def listen(self, server_name = None):
@@ -201,7 +205,7 @@ class MiddlewareListen(object):
         ns.register(server_name, self.uri)
         
       def requestLoop():
-        print("Listening at {0}".format(self.uri))
+        print("\nListening at {0}".format(self.uri))
         daemon.requestLoop()
       
       thread = threading.Thread(target=requestLoop)
@@ -222,40 +226,40 @@ class MiddlewareRequest(object):
       
   def connect(self):
     try:
+      # print(f"\n[INICIO] Tentando conectar com {uri}")
       if self.uri is None:
         ns = Pyro5.api.locate_ns()
         uri = ns.lookup(self.server_name)
       else:
         uri = self.uri
-      print("trying to connect", uri)
       self.proxy = Pyro5.api.Proxy(uri)
-      print("connected")
+      # print("[FIM] Conectado com sucesso")
       return True
     except:
-      print("error connecting")
+      print("[FIM] Falha ao se conectar")
       return False
     
   def notify_added_log(self):
     try:
-      return self.proxy.added_log()
+      print("\n[INICIO] Requisitando notify_added_log")
+      res = self.proxy.added_log()
+      print("[FIM] Retorno notify_added_log: ", res)
+      return res
     except Exception as e:
+      print("[FIM] Retorno notify_added_log: NOK")
       return "NOK"
     
   def notify_promote_to_votante(self):
     try:
-      return self.proxy.promote_to_votante()
+      print("\n[INICIO] Requisitando promote_to_votante")
+      res = self.proxy.promote_to_votante()
+      print("[FIM] Retorno promote_to_votante", res)
+      return res
     except Exception as e:
+      print("[FIM] Retorno promote_to_votante NOK")
       return "NOK"
 
 
 name_server = "LIDER-EPOCA1"
 lider = Lider(name_server=name_server, num_quorum=2)
 MiddlewareListen().listen(name_server)
-
-# daemon = Pyro5.server.Daemon()
-# ns = Pyro5.api.locate_ns()
-# uri = daemon.register(Middleware)
-# ns.register(lider.name_server, uri)
-
-# print("Ready.")
-# daemon.requestLoop()

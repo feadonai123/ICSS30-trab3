@@ -106,39 +106,49 @@ class MiddlewareRequest(object):
       if self.server_name is not None:
         ns = Pyro5.api.locate_ns()
         uri = ns.lookup(self.server_name)
+      # print(f"\n[INICIO] Tentando conectar com {uri}")
       self.proxy = Pyro5.api.Proxy(uri)
+      # print("[FIM] Conectado com sucesso")
       return True
     except:
+      print("[FIM] Falha ao se conectar")
       return False
     
   def enroll_broker(self, id, ref, estado):
     try:
-      return self.proxy.enroll_broker(id, ref, estado)
+      print("\n[INICIO] Requisitando enroll_broker", id, ref, estado)
+      res = self.proxy.enroll_broker(id, ref, estado)
+      print("[FIM] Retorno enroll_broker SUCESSO: ", res)
+      return res
     except Exception as e:
-      print(e)
+      print("[FIM] Retorno enroll_broker ERRO: ", e)
       return "NOK"
   
   def search(self, offset):
     try:
-      print("Searching", offset)
+      print("\n[INICIO] Requisitando search", offset)
       return self.proxy.search(offset)
     except Exception as e:
-      print(e)
+      print("[FIM] Retorno search ERRO: ", e)
       return "NOK"
     
   def heartbeat(self, id):
     try:
+      # print("\n[INICIO] Requisitando heartbeat", id)
+      # print("[FIM] Retorno heartbeat SUCESSO")
       return self.proxy.heartbeat(id)
     except Exception as e:
-      print(e)
+      # print("[FIM] Retorno heartbeat ERRO: ", e)
       return "NOK"
   
 class MiddlewareListen(object):
   @Pyro5.api.callback
   @Pyro5.server.expose
   def added_log(self):
-    print("Log added")
-    return votante.update_log()
+    print(f"\n[INICIO] Recebendo added_log")
+    res = votante.update_log()
+    print(f"[FIM] Retorno added_log", res)
+    return res
       
   def listen(self, server_name = None):
     try:
