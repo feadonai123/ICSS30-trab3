@@ -36,7 +36,7 @@ class Votante():
     res = middleware.enroll_broker(self.id, self.uri, self.estado)
     return self.check_response(res)
   
-  def update_log(self):
+  def update_log(self, getUncommitted=False):
     print("Adding log")
     middleware = MiddlewareRequest(connection_str=self.lider_server_name, connection_type="NS")
     if middleware.connect() is False:
@@ -44,14 +44,14 @@ class Votante():
     else:
       print("Connected to middleware")
       
-    res_success, res_data = middleware.search(len(self.log))
+    res_success, res_data = middleware.search(len(self.log), getUncommitted)
+    print("res_data: {0}".format(res_data))
     if res_success == "NOK":
       print("Error searching log")
       print("log: {0}".format(self.log))
-      # realizar tratativa. Deve receber offset do lider, fazer nova busca, truncar log atual
       self.log = self.log[:res_data]
       
-      res_success2, res_data2 = middleware.search(res_data)
+      res_success2, res_data2 = middleware.search(res_data, getUncommitted)
       if res_success2 == "NOK":
         print("Error searching log")
         print("log: {0}".format(self.log))
@@ -124,10 +124,10 @@ class MiddlewareRequest(object):
       print("[FIM] Retorno enroll_broker ERRO: ", e)
       return "NOK"
   
-  def search(self, offset):
+  def search(self, offset, getUncommitted=False):
     try:
       print("\n[INICIO] Requisitando search", offset)
-      return self.proxy.search(offset)
+      return self.proxy.search(offset, getUncommitted)
     except Exception as e:
       print("[FIM] Retorno search ERRO: ", e)
       return "NOK"
@@ -146,8 +146,16 @@ class MiddlewareListen(object):
   @Pyro5.server.expose
   def added_log(self):
     print(f"\n[INICIO] Recebendo added_log")
-    res = votante.update_log()
+    res = votante.update_log(getUncommitted=True)
     print(f"[FIM] Retorno added_log", res)
+    return res
+  
+  @Pyro5.api.callback
+  @Pyro5.server.expose
+  def rollback(self, offset):
+    print(f"\n[INICIO] Recebendo rollback", offset)
+    res = votante.update_log(getUncommitted=False)
+    print(f"[FIM] Retorno rollback", res)
     return res
       
   def listen(self, server_name = None):

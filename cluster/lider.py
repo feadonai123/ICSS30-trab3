@@ -15,6 +15,7 @@ class Lider:
     self.name_server = name_server
     self.num_quorum = num_quorum
     self.log = []
+    self.log_uncommitted = []
     self.brokers = []
     
     self.start_check_brokers()
@@ -24,8 +25,8 @@ class Lider:
     print("Broker {0} enrolled".format(id))
     
   def add_log(self, log):
-    self.log.append(log)
-    print("Log added", self.log)
+    self.log_uncommitted.append(log)
+    print("Uncomited added", self.log_uncommitted)
     
     brokers_success = 0
     can_commit = False
@@ -58,26 +59,52 @@ class Lider:
     
     if can_commit is True:
       print("commiting")
+      self.log = self.log + self.log_uncommitted
       print("New Log: {0}".format(self.log))
+      self.log_uncommitted = []
       return True
     else:
       print("aborting")
-      self.log = self.log[:-1]
       print("log: {0}".format(self.log))
+      self.log_uncommitted = []
+      
+      # notificar brokers para rollback
+      for broker in self.brokers:
+        id, ref, estado, lastBeatAt = broker
+        print("connecting to middleware {0}".format(ref))
+        middleware = MiddlewareRequest(connection_str=ref, connection_type="URI")
+        if middleware.connect() is False:
+          print("Error connecting to middleware")
+          raise Exception("Error connecting to middleware")
+        else:
+          print("Connected to middleware {0}".format(id))
+
+        print("notify_rollback")
+        res = middleware.notify_rollback()
+        if res == "NOK":
+          print("Error rolling back")
+        else:
+          print("Rollback with success")
+      
       return False
     
-  def search(self, offset):
-    print("Log: {0}".format(self.log[offset:]))
     
-    if(offset == 0 and len(self.log) == 0):
+  def search(self, offset, getUncommitted=False):
+    log_to_search = self.log
+    if getUncommitted is True:
+      log_to_search = self.log_uncommitted + self.log
+      
+    print("Log: {0}".format(log_to_search[offset:]))
+    
+    if(offset == 0 and len(log_to_search) == 0):
       print("returning", "OK", [])
       return ('OK', [])
-    elif(offset < len(self.log)):
-      print("returning", self.log[offset:])
-      return ('OK', self.log[offset:])
+    elif(offset < len(log_to_search)):
+      print("returning", log_to_search[offset:])
+      return ('OK', log_to_search[offset:])
     else:
       print("returning", "NOK")
-      return ("NOK", len(self.log) - 1)
+      return ("NOK", len(log_to_search) - 1)
   
   def set_broker_alive(self, broker_id):
     index = 0
@@ -136,6 +163,11 @@ class Lider:
   def read_log(self, offset):
     offset = int(offset)
     print("Reading log", offset)
+    print('len', len(self.log))
+    print('log', self.log)
+    if(offset == 0 and len(self.log) == 0):
+      print("returning", (True, []))
+      return (True, [])
     if offset < len(self.log):
       print("returning", self.log[offset:])
       return (True, self.log[offset:])
@@ -182,9 +214,9 @@ class MiddlewareListen(object):
       return "NOK"
   
   @Pyro5.server.expose
-  def search(self, offset):
-    print(f"\n[INICIO] Recebendo search", offset)
-    res = lider.search(offset)
+  def search(self, offset, getUncommitted=False):
+    print(f"\n[INICIO] Recebendo search", offset, getUncommitted)
+    res = lider.search(offset, getUncommitted)
     print(f"\n[FIM] Recebendo search SUCESSO", res)
     return res
   
@@ -238,6 +270,16 @@ class MiddlewareRequest(object):
     except:
       print("[FIM] Falha ao se conectar")
       return False
+    
+  def notify_rollback(self):
+    try:
+      print("\n[INICIO] Requisitando notify_rollback")
+      res = self.proxy.rollback()
+      print("[FIM] Retorno notify_rollback: ", res)
+      return res
+    except Exception as e:
+      print("[FIM] Retorno notify_rollback: NOK")
+      return "NOK"
     
   def notify_added_log(self):
     try:
